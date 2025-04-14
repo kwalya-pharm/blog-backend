@@ -1,6 +1,5 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const bodyParser = require("body-parser");
 const dotenv = require("dotenv");
 const cors = require("cors");
 
@@ -10,33 +9,38 @@ dotenv.config();
 const app = express();
 
 // CORS configuration to allow requests from your frontend
+const frontendUrl = process.env.FRONTEND_URL || '*'; // Fallback to '*' during development
 app.use(cors({
-  origin: process.env.FRONTEND_URL, // Use the frontend URL from your .env file
+  origin: frontendUrl, 
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(bodyParser.json());
+// Middleware for parsing JSON requests
+app.use(express.json()); // Express now has built-in body parsing for JSON
 
-// MongoDB connection
+// MongoDB connection with retry on failure
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true
+  useUnifiedTopology: true,
 })
   .then(() => console.log("MongoDB Connected"))
-  .catch(err => console.log("MongoDB connection error:", err));
+  .catch((err) => {
+    console.error("MongoDB connection error:", err);
+    process.exit(1); // Exit if MongoDB connection fails
+  });
 
 // Define Schemas
 const replySchema = new mongoose.Schema({
   replier: { type: String, required: true },
   replyText: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
 });
 
 const postSchema = new mongoose.Schema({
   author: { type: String, required: true },
   content: { type: String, required: true },
-  replies: [replySchema]
+  replies: [replySchema],
 }, { timestamps: true });
 
 const Post = mongoose.model("Post", postSchema);
@@ -51,7 +55,7 @@ app.post("/api/posts", async (req, res) => {
     await newPost.save();
     res.status(201).json(newPost);
   } catch (err) {
-    res.status(400).json({ error: "Failed to create post" });
+    res.status(400).json({ error: "Failed to create post", details: err.message });
   }
 });
 
@@ -61,7 +65,7 @@ app.get("/api/posts", async (req, res) => {
     const posts = await Post.find();
     res.json(posts);
   } catch (err) {
-    res.status(400).json({ error: "Failed to fetch posts" });
+    res.status(400).json({ error: "Failed to fetch posts", details: err.message });
   }
 });
 
@@ -76,7 +80,7 @@ app.post("/api/posts/:id/replies", async (req, res) => {
     await post.save();
     res.status(201).json(post);
   } catch (err) {
-    res.status(400).json({ error: "Failed to add reply" });
+    res.status(400).json({ error: "Failed to add reply", details: err.message });
   }
 });
 
@@ -89,19 +93,21 @@ app.put("/api/posts/:id", async (req, res) => {
       { content },
       { new: true }
     );
+    if (!updatedPost) return res.status(404).json({ error: "Post not found" });
     res.json(updatedPost);
   } catch (err) {
-    res.status(400).json({ error: "Failed to update post" });
+    res.status(400).json({ error: "Failed to update post", details: err.message });
   }
 });
 
 // Delete a post
 app.delete("/api/posts/:id", async (req, res) => {
   try {
-    await Post.findByIdAndDelete(req.params.id);
+    const deletedPost = await Post.findByIdAndDelete(req.params.id);
+    if (!deletedPost) return res.status(404).json({ error: "Post not found" });
     res.json({ message: "Post deleted" });
   } catch (err) {
-    res.status(400).json({ error: "Failed to delete post" });
+    res.status(400).json({ error: "Failed to delete post", details: err.message });
   }
 });
 
@@ -112,15 +118,20 @@ app.delete("/api/posts/:postId/replies/:replyIndex", async (req, res) => {
     const post = await Post.findById(postId);
     if (!post) return res.status(404).json({ error: "Post not found" });
 
+    if (replyIndex < 0 || replyIndex >= post.replies.length) {
+      return res.status(400).json({ error: "Invalid reply index" });
+    }
+
     post.replies.splice(replyIndex, 1);
     await post.save();
     res.json(post);
   } catch (err) {
-    res.status(400).json({ error: "Failed to delete reply" });
+    res.status(400).json({ error: "Failed to delete reply", details: err.message });
   }
 });
 
 // Start the server
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on port ${process.env.PORT}`);
+const PORT = process.env.PORT || 5000; // Default to 5000 if PORT is not defined in .env
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
