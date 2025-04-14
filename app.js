@@ -8,7 +8,14 @@ dotenv.config();
 
 // Set up app and middleware
 const app = express();
-app.use(cors());
+
+// CORS configuration to allow requests from your frontend
+app.use(cors({
+  origin: process.env.FRONTEND_URL, // Use the frontend URL from your .env file
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(bodyParser.json());
 
 // MongoDB connection
@@ -73,7 +80,7 @@ app.post("/api/posts/:id/replies", async (req, res) => {
   }
 });
 
-// 🖊️ Edit post content
+// Edit post content
 app.put("/api/posts/:id", async (req, res) => {
   const { content } = req.body;
   try {
@@ -88,7 +95,7 @@ app.put("/api/posts/:id", async (req, res) => {
   }
 });
 
-// 🗑️ Delete a post
+// Delete a post
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     await Post.findByIdAndDelete(req.params.id);
@@ -98,7 +105,7 @@ app.delete("/api/posts/:id", async (req, res) => {
   }
 });
 
-// 🗑️ Delete a reply
+// Delete a reply
 app.delete("/api/posts/:postId/replies/:replyIndex", async (req, res) => {
   const { postId, replyIndex } = req.params;
   try {
