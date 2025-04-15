@@ -2,24 +2,40 @@ const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
+const helmet = require("helmet"); // <-- Added
 
 dotenv.config();
 
 // Set up app and middleware
 const app = express();
 
-// CORS configuration to allow requests from your frontend
-const frontendUrl = process.env.FRONTEND_URL || '*'; // Fallback to '*' during development
+// CORS configuration
+const frontendUrl = process.env.FRONTEND_URL || '*';
 app.use(cors({
-  origin: frontendUrl, 
+  origin: frontendUrl,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Middleware for parsing JSON requests
-app.use(express.json()); // Express now has built-in body parsing for JSON
+// Add Helmet security headers including CSP
+app.use(helmet());
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", frontendUrl],
+      connectSrc: ["'self'", frontendUrl],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      fontSrc: ["'self'"],
+    },
+  })
+);
 
-// MongoDB connection with retry on failure
+// JSON parser
+app.use(express.json());
+
+// MongoDB connection
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -27,10 +43,10 @@ mongoose.connect(process.env.MONGODB_URI, {
   .then(() => console.log("MongoDB Connected"))
   .catch((err) => {
     console.error("MongoDB connection error:", err);
-    process.exit(1); // Exit if MongoDB connection fails
+    process.exit(1);
   });
 
-// Define Schemas
+// Schemas
 const replySchema = new mongoose.Schema({
   replier: { type: String, required: true },
   replyText: { type: String, required: true },
@@ -46,8 +62,6 @@ const postSchema = new mongoose.Schema({
 const Post = mongoose.model("Post", postSchema);
 
 // Routes
-
-// Create a new post
 app.post("/api/posts", async (req, res) => {
   const { author, content } = req.body;
   try {
@@ -59,7 +73,6 @@ app.post("/api/posts", async (req, res) => {
   }
 });
 
-// Get all posts
 app.get("/api/posts", async (req, res) => {
   try {
     const posts = await Post.find();
@@ -69,7 +82,6 @@ app.get("/api/posts", async (req, res) => {
   }
 });
 
-// Add a reply to a post
 app.post("/api/posts/:id/replies", async (req, res) => {
   const { replier, replyText } = req.body;
   try {
@@ -84,7 +96,6 @@ app.post("/api/posts/:id/replies", async (req, res) => {
   }
 });
 
-// Edit post content
 app.put("/api/posts/:id", async (req, res) => {
   const { content } = req.body;
   try {
@@ -100,7 +111,6 @@ app.put("/api/posts/:id", async (req, res) => {
   }
 });
 
-// Delete a post
 app.delete("/api/posts/:id", async (req, res) => {
   try {
     const deletedPost = await Post.findByIdAndDelete(req.params.id);
@@ -111,7 +121,6 @@ app.delete("/api/posts/:id", async (req, res) => {
   }
 });
 
-// Delete a reply
 app.delete("/api/posts/:postId/replies/:replyIndex", async (req, res) => {
   const { postId, replyIndex } = req.params;
   try {
@@ -130,8 +139,8 @@ app.delete("/api/posts/:postId/replies/:replyIndex", async (req, res) => {
   }
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000; // Default to 5000 if PORT is not defined in .env
+// Start server
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
